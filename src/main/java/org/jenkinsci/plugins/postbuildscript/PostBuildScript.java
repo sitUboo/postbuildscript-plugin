@@ -38,6 +38,7 @@ public class PostBuildScript extends Notifier implements MatrixAggregatable {
 
     private boolean scriptOnlyIfSuccess;
     private boolean scriptOnlyIfFailure;
+    private int behavior;
 
     @DataBoundConstructor
     public PostBuildScript(List<GenericScript> genericScriptFile,
@@ -45,6 +46,7 @@ public class PostBuildScript extends Notifier implements MatrixAggregatable {
                            List<GroovyScriptContent> groovyScriptContent,
                            boolean scriptOnlyIfSuccess,
                            boolean scriptOnlyIfFailure,
+                           int behavior,
                            List<BuildStep> buildStep) {
         this.genericScriptFileList = genericScriptFile;
         this.groovyScriptFileList = groovyScriptFile;
@@ -52,6 +54,7 @@ public class PostBuildScript extends Notifier implements MatrixAggregatable {
         this.buildSteps = buildStep;
         this.scriptOnlyIfSuccess = scriptOnlyIfSuccess;
         this.scriptOnlyIfFailure = scriptOnlyIfFailure;
+        this.behavior = behavior;
     }
 
     public MatrixAggregator createAggregator(MatrixBuild build, Launcher launcher, BuildListener listener) {
@@ -88,7 +91,21 @@ public class PostBuildScript extends Notifier implements MatrixAggregatable {
                 listener.getLogger().println("[PostBuildScript] Build is not failure : do not execute script");
                 return true;
             } else {
-                return processScripts(executor, build, launcher, listener);
+                if (processScripts(executor, build, launcher, listener) == false) {
+                    // Script failed... but what should we do for the overall build status?
+                    switch (getBehavior()) {
+                        case 0: // Do nothing
+                            build.setResult(Result.SUCCESS);
+                            return true;
+                        case 1: // Mark as unstable
+                            build.setResult(Result.UNSTABLE);
+                            return true;
+                        case 2: // Mark as a failure
+                            build.setResult(Result.FAILURE);
+                            return false;
+                    }
+                }
+                return true;
             }
         } catch (PostBuildScriptException pse) {
             listener.getLogger().println("[PostBuildScript] - [Error] - Problems occurs: " + pse.getMessage());
@@ -104,7 +121,7 @@ public class PostBuildScript extends Notifier implements MatrixAggregatable {
         if (genericScriptFileList != null) {
             boolean result = processGenericScriptList(genericScriptFileList, executor, build, launcher, listener);
             if (!result) {
-                setFailedResult(build);
+                //setFailedResult(build);
                 return false;
             }
         }
@@ -113,7 +130,7 @@ public class PostBuildScript extends Notifier implements MatrixAggregatable {
         if (groovyScriptFileList != null) {
             boolean result = processGroovyScriptFileList(groovyScriptFileList, executor, build, listener);
             if (!result) {
-                setFailedResult(build);
+                //setFailedResult(build);
                 return false;
             }
         }
@@ -122,7 +139,7 @@ public class PostBuildScript extends Notifier implements MatrixAggregatable {
         if (groovyScriptContentList != null) {
             boolean result = processGroovyScriptContentList(build.getWorkspace(), groovyScriptContentList, executor);
             if (!result) {
-                setFailedResult(build);
+                //setFailedResult(build);
                 return false;
             }
         }
@@ -131,7 +148,7 @@ public class PostBuildScript extends Notifier implements MatrixAggregatable {
         if (buildSteps != null) {
             boolean result = processBuildSteps(buildSteps, build, launcher, listener);
             if (!result) {
-                setFailedResult(build);
+                //setFailedResult(build);
                 return false;
             }
         }
@@ -192,7 +209,7 @@ public class PostBuildScript extends Notifier implements MatrixAggregatable {
         try {
             for (BuildStep bs : buildSteps) {
                 if (!bs.perform(build, launcher, listener)) {
-                    setFailedResult(build);
+                 //   setFailedResult(build);
                     return false;
                 }
             }
@@ -265,6 +282,10 @@ public class PostBuildScript extends Notifier implements MatrixAggregatable {
     @SuppressWarnings("unused")
     public boolean isScriptOnlyIfFailure() {
         return scriptOnlyIfFailure;
+    }
+   
+    public int getBehavior() {
+        return behavior;
     }
 
     @Extension(ordinal = 99)
